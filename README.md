@@ -247,12 +247,6 @@ Security measures:
 - One ticket is requested per recording and per spoken answer, because tickets are single-use.
 
 ## 11. Known limitations
-
-- **Barge-in is button-based.** "Interrupt & speak" stops playback and starts a new question, but speaking over the agent does not interrupt it automatically, and the TTS socket is closed rather than sent a `cancel` message.
-- **Spoken text is not cleaned.** Citation markers (for example `[S1]`) and markdown can reach the text-to-speech input.
-- **Follow-up retrieval.** Conversation history reaches the LLM, but retrieval uses the question as asked, so very short follow-ups can retrieve poorly.
-- **Hindi.** The embedding model and BM25 are English-oriented, so retrieval for Hindi questions is weaker, and the default voice is English with no language field sent to TTS.
-- **Health tool scope.** It checks only the Noise Suppressor endpoint, not `/v1/stt/health` or `/v1/tts/health`.
 - **Latency.** Streamlit reruns the script on each event and answer time depends on the LLM provider, so the first reply is slower than a purpose-built voice loop.
 - **Browser support.** Streaming playback uses MediaSource with MP3, available in Chromium-based browsers; other browsers fall back to playing the complete audio.
 - **Static knowledge.** The index reflects the documentation at crawl time.
