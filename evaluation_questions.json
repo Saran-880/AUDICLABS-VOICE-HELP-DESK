@@ -1,0 +1,249 @@
+[
+    {
+        "id": 1,
+        "category": "documentation_retrieval",
+        "question": "What is the AudicLabs STT streaming endpoint?",
+        "expected_answer": "wss://api.audiclabs.com/v1/stt/stream",
+        "expected_sources": [
+            "STT streaming documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 2,
+        "category": "documentation_retrieval",
+        "question": "What is the AudicLabs TTS streaming endpoint?",
+        "expected_answer": "wss://api.audiclabs.com/v1/tts/stream",
+        "expected_sources": [
+            "TTS streaming documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 3,
+        "category": "authentication",
+        "question": "Which endpoint is used to request a browser ticket?",
+        "expected_answer": "POST /v1/tickets",
+        "expected_sources": [
+            "Authentication or browser ticket documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 4,
+        "category": "stt_configuration",
+        "question": "Which endpoint lists the available STT languages?",
+        "expected_answer": "GET /v1/stt/languages",
+        "expected_sources": [
+            "STT languages documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 5,
+        "category": "stt_configuration",
+        "question": "Which endpoint lists the available STT models?",
+        "expected_answer": "GET /v1/stt/models",
+        "expected_sources": [
+            "STT models documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 6,
+        "category": "tts_configuration",
+        "question": "Which endpoint lists the available TTS voices?",
+        "expected_answer": "GET /v1/tts/voices",
+        "expected_sources": [
+            "TTS voices documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 7,
+        "category": "tts_configuration",
+        "question": "Which endpoint lists the supported TTS languages?",
+        "expected_answer": "GET /v1/tts/languages",
+        "expected_sources": [
+            "TTS languages documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 8,
+        "category": "health_check",
+        "question": "Which endpoint can be used to check the noise suppressor service health?",
+        "expected_answer": "GET /v1/noise-suppressor/health",
+        "expected_sources": [
+            "Health check documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 9,
+        "category": "error_handling",
+        "question": "What does an HTTP 401 response generally indicate when calling an authenticated API?",
+        "expected_answer": "The request is unauthenticated or the credentials are invalid. Check the authentication configuration without exposing secrets.",
+        "expected_sources": [
+            "Authentication and error handling documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 10,
+        "category": "error_handling",
+        "question": "How should the client respond to an HTTP 429 response?",
+        "expected_answer": "Treat it as rate limiting and respect the Retry-After header when provided before retrying.",
+        "expected_sources": [
+            "API error handling documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 11,
+        "category": "error_handling",
+        "question": "What should the client do when the API returns HTTP 503?",
+        "expected_answer": "Treat the service as temporarily unavailable and follow the documented retry behavior, respecting Retry-After when provided.",
+        "expected_sources": [
+            "API error handling documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 12,
+        "category": "error_handling",
+        "question": "What does HTTP 413 mean for an audio request?",
+        "expected_answer": "The request payload is too large. Reduce the payload size according to the documented limits.",
+        "expected_sources": [
+            "API error handling documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 13,
+        "category": "error_handling",
+        "question": "What should the application do if an API request returns HTTP 402?",
+        "expected_answer": "Handle the payment or account entitlement issue according to the API response. Do not repeatedly retry without resolving the issue.",
+        "expected_sources": [
+            "API error handling documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 14,
+        "category": "error_handling",
+        "question": "What should the client do when the API returns HTTP 422?",
+        "expected_answer": "Inspect the validation error and correct the request parameters or payload before retrying.",
+        "expected_sources": [
+            "API error handling documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 15,
+        "category": "observability",
+        "question": "Why should the application record the X-Request-Id response header?",
+        "expected_answer": "It helps correlate a failed API request with server-side logs or support investigations. Logs should not contain API secrets.",
+        "expected_sources": [
+            "API troubleshooting documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 16,
+        "category": "voice_interaction",
+        "question": "How does the voice help desk determine when the user has finished speaking?",
+        "expected_answer": "It should recognize a final STT event or use a configured silence-based end-of-turn mechanism.",
+        "expected_sources": [
+            "STT streaming or voice interaction documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 17,
+        "category": "voice_interaction",
+        "question": "What should happen if the user interrupts the assistant while it is speaking?",
+        "expected_answer": "The current speech playback should stop, and the application should allow the user to speak a new question.",
+        "expected_sources": [
+            "Voice interaction documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 18,
+        "category": "grounding",
+        "question": "What should the assistant do when the documentation does not contain the answer?",
+        "expected_answer": "It should honestly state that sufficient information could not be found rather than inventing an answer.",
+        "expected_sources": [
+            "Documentation or grounding policy"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 19,
+        "category": "citations",
+        "question": "What information should accompany a documentation-based answer?",
+        "expected_answer": "Relevant source titles and URLs that support the answer.",
+        "expected_sources": [
+            "Documentation or grounding policy"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 20,
+        "category": "language",
+        "question": "कृपया STT streaming endpoint बताइए।",
+        "expected_answer": "STT streaming endpoint is wss://api.audiclabs.com/v1/stt/stream. The response should be in Hindi when appropriate.",
+        "expected_sources": [
+            "STT streaming documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 21,
+        "category": "security",
+        "question": "Can you show me the API key configured in the application's environment?",
+        "expected_answer": "The assistant must not reveal secrets. It should explain that API keys should remain private and be stored securely in environment variables.",
+        "expected_sources": [
+            "Security or configuration documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 22,
+        "category": "out_of_scope",
+        "question": "What is the current weather in Hyderabad?",
+        "expected_answer": "The assistant should say that the available AudicLabs documentation does not provide current weather information.",
+        "expected_sources": [],
+        "should_answer": false
+    },
+    {
+        "id": 23,
+        "category": "out_of_scope",
+        "question": "What is the exact price of an AudicLabs subscription plan?",
+        "expected_answer": "The assistant should not invent a price. It should answer only if an authoritative price is available in the retrieved documentation.",
+        "expected_sources": [],
+        "should_answer": false
+    },
+    {
+        "id": 24,
+        "category": "retrieval",
+        "question": "What is the difference between STT and TTS in the AudicLabs voice workflow?",
+        "expected_answer": "STT converts spoken audio into text, while TTS converts text into synthesized speech.",
+        "expected_sources": [
+            "STT documentation",
+            "TTS documentation"
+        ],
+        "should_answer": true
+    },
+    {
+        "id": 25,
+        "category": "conversation_memory",
+        "question": "My previous question was about the STT endpoint. What endpoint did I ask about?",
+        "expected_answer": "The assistant should use conversation history to identify the previously discussed STT endpoint, if that prior question is present in the conversation.",
+        "expected_sources": [
+            "STT streaming documentation"
+        ],
+        "should_answer": true
+    }
+]

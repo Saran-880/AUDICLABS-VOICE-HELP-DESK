@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0;
+            color: var(--text-color, #222);
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button {
+            border: 1px solid #bbb;
+            border-radius: 9px;
+            padding: 10px 14px;
+            background: #f7f7f7;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .note {
+            margin-top: 8px;
+            min-height: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            color: #64748b;
+        }
+
+        .transcript {
+            color: #0284c7;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="controls">
+        <button id="start">🎙️ Start speaking</button>
+        <button id="stop" disabled>■ Stop / submit</button>
+        <button id="interrupt" disabled>↻ Interrupt &amp; speak</button>
+    </div>
+
+    <div id="note" class="note" aria-live="polite">Ready.</div>
+
+    <script>
+        (() => {
+            const startButton = document.getElementById("start");
+            const stopButton = document.getElementById("stop");
+            const interruptButton = document.getElementById("interrupt");
+            const note = document.getElementById("note");
+
+            let sttSocket = null;
+            let ttsSocket = null;
+
+            let audioContext = null;
+            let microphone = null;
+            let source = null;
+            let processor = null;
+            let silentGain = null;
+
+            let listening = false;
+            let waitingForTicket = false;
+            let waitingForFinal = false;
+            let turnSubmitted = false;
+
+            let latestTranscript = "";
+            let partialTranscript = "";
+            let finalTranscript = "";
+            let eventCounter = 0;
+
+            let speechDetected = false;
+            let lastSpeechAt = 0;
+            let finalFallbackTimer = null;
+
+            let lastStartedSttTicket = null;
+            let lastTtsTicket = null;
+
+            let audioChunks = [];
+            let audioElement = null;
+            let audioUrl = null;
+
+            let mediaSource = null;
+            let sourceBuffer = null;
+            let mediaSourceUrl = null;
+            let mediaQueue = [];
+            let mediaDone = false;
+            let mediaPlaybackStarted = false;
+            let mediaSourceMode = false;
+            let mediaPlaybackFailed = false;
+
+            let selectedSttLanguage = "auto";
+            let selectedTtsVoice = "voice_bilal_en";
+            let selectedTtsModel = "audic-tts-1";
+
+            const SILENCE_END_MS = 1200;
+            const SPEECH_RMS_THRESHOLD = 0.018;
+            const FINAL_WAIT_MS = 1800;
+
+            function setStatus(message, isTranscript = false) {
+                note.textContent = message;
+                note.classList.toggle("transcript", isTranscript);
+            }
+
+            function sendToStreamlit(payload) {
+                eventCounter++;
+
+                window.parent.postMessage({
+                    isStreamlitMessage: true,
+                    type: "streamlit:setComponentValue",
+                    value: {
+                        ...payload,
+                        event_id: `${Date.now()}-${eventCounter}`
+                    }
+                }, "*");
+            }
+
+            function notifyStreamlit(type, extra = {}) {
+                window.parent.postMessage({
+                    isStreamlitMessage: true,
+                    type,
+                    ...extra
+                }, "*");
+            }
+
+            function resetTurnState() {
+                latestTranscript = "";
+                partialTranscript = "";
+                finalTranscript = "";
+                speechDetected = false;
+                lastSpeechAt = 0;
+                waitingForFinal = false;
+                turnSubmitted = false;
+
+                if (finalFallbackTimer) {
+                    clearTimeout(finalFallbackTimer);
+                    finalFallbackTimer = null;
+                }
+            }
+
+            function closeSttSocket(sendStop = false) {
+                const socket = sttSocket;
+                sttSocket = null;
+
+                if (!socket) return;
+
+                if (
+                    sendStop &&
+                    socket.readyState === WebSocket.OPEN
+                ) {
+                    try {
+                        socket.send(JSON.stringify({ type: "stop" }));
+                    } catch (_) { }
+                }
+
+                socket.onopen = null;
+                socket.onmessage = null;
+                socket.onerror = null;
+                socket.onclose = null;
+
+                try {
+                    socket.close();
+                } catch (_) { }
+            }
+
+            function cleanupMicrophone() {
+                listening = false;
+                waitingForTicket = false;
+
+                if (processor) {
+                    processor.onaudioprocess = null;
+
+                    try {
+                        processor.disconnect();
+                    } catch (_) { }
+
+                    processor = null;
+                }
+
+                if (source) {
+                    try {
+                        source.disconnect();
+                    } catch (_) { }
+
+                    source = null;
+                }
+
+                if (silentGain) {
+                    try {
+                        silentGain.disconnect();
+                    } catch (_) { }
+
+                    silentGain = null;
+                }
+
+                if (microphone) {
+                    microphone.getTracks().forEach(track => track.stop());
+                    microphone = null;
+                }
+
+                if (audioContext) {
+                    const context = audioContext;
+                    audioContext = null;
+                    context.close().catch(() => { });
+                }
+
+                startButton.disabled = false;
+                stopButton.disabled = true;
+                interruptButton.disabled = true;
+            }
+
+            function stopAudioPlayback() {
+                const socket = ttsSocket;
+                ttsSocket = null;
+
+                if (socket) {
+                    socket.onopen = null;
+                    socket.onmessage = null;
+                    socket.onerror = null;
+                    socket.onclose = null;
+
+                    try {
+                        socket.close();
+                    } catch (_) { }
+                }
+
+                if (audioElement) {
+                    audioElement.onended = null;
+                    audioElement.onerror = null;
+                    audioElement.pause();
+                    audioElement.removeAttribute("src");
+                    audioElement.load();
+                    audioElement = null;
+                }
+
+                if (audioUrl) {
+                    URL.revokeObjectURL(audioUrl);
+                    audioUrl = null;
+                }
+
+                if (mediaSourceUrl) {
+                    URL.revokeObjectURL(mediaSourceUrl);
+                    mediaSourceUrl = null;
+                }
+
+                audioChunks = [];
+                mediaQueue = [];
+                mediaSource = null;
+                sourceBuffer = null;
+                mediaDone = false;
+                mediaPlaybackStarted = false;
+                mediaSourceMode = false;
+                mediaPlaybackFailed = false;
+
+                interruptButton.disabled = true;
+            }
+
+            function submitRecognizedQuestion() {
+                if (turnSubmitted) return;
+
+                turnSubmitted = true;
+
+                if (finalFallbackTimer) {
+                    clearTimeout(finalFallbackTimer);
+                    finalFallbackTimer = null;
+                }
+
+                const transcript = (
+                    finalTranscript ||
+                    latestTranscript ||
+                    partialTranscript
+                ).trim();
+
+                closeSttSocket(false);
+                cleanupMicrophone();
+
+                if (transcript) {
+                    setStatus("Recognized: " + transcript, true);
+
+                    sendToStreamlit({
+                        action: "question",
+                        text: transcript
+                    });
+                } else {
+                    setStatus(
+                        "No transcript received. Please try again."
+                    );
+
+                    sendToStreamlit({ action: "stop" });
+                }
+            }
+
+            function requestSttStop(reason = "stop_button") {
+                if (turnSubmitted || waitingForFinal) return;
+
+                if (
+                    !sttSocket ||
+                    sttSocket.readyState !== WebSocket.OPEN
+                ) {
+                    submitRecognizedQuestion();
+                    return;
+                }
+
+                waitingForFinal = true;
+                listening = false;
+                stopButton.disabled = true;
+
+                setStatus(
+                    reason === "silence"
+                        ? "Silence detected. Finalizing your question..."
+                        : "Finalizing your question..."
+                );
+
+                try {
+                    sttSocket.send(JSON.stringify({ type: "stop" }));
+                } catch (_) {
+                    submitRecognizedQuestion();
+                    return;
+                }
+
+                finalFallbackTimer = setTimeout(
+                    submitRecognizedQuestion,
+                    FINAL_WAIT_MS
+                );
+            }
+
+            function stopAndSubmit() {
+                if (listening || waitingForTicket || waitingForFinal) {
+                    if (waitingForTicket && !sttSocket) {
+                        cleanupMicrophone();
+                        resetTurnState();
+                        setStatus("Speech capture cancelled.");
+                        sendToStreamlit({ action: "stop" });
+                        return;
+                    }
+
+                    requestSttStop("stop_button");
+                } else {
+                    stopAudioPlayback();
+                    setStatus("Spoken answer stopped.");
+                    startButton.disabled = false;
+                    stopButton.disabled = true;
+                }
+            }
+
+            function requestNewQuestion() {
+                stopAudioPlayback();
+                closeSttSocket(true);
+                cleanupMicrophone();
+                resetTurnState();
+
+                waitingForTicket = true;
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                interruptButton.disabled = true;
+
+                setStatus("Requesting secure speech ticket...");
+
+                sendToStreamlit({
+                    action: "request_stt_ticket"
+                });
+            }
+
+            startButton.addEventListener("click", () => {
+                if (listening || waitingForTicket) return;
+                requestNewQuestion();
+            });
+
+            stopButton.addEventListener("click", stopAndSubmit);
+
+            interruptButton.addEventListener("click", () => {
+                setStatus("Interrupted. Requesting a new speech ticket...");
+                requestNewQuestion();
+            });
+
+            function toPcm16(samples) {
+                const output = new Int16Array(samples.length);
+
+                for (let i = 0; i < samples.length; i++) {
+                    const value = Math.max(-1, Math.min(1, samples[i]));
+
+                    output[i] = value < 0
+                        ? value * 32768
+                        : value * 32767;
+                }
+
+                return output;
+            }
+
+            function resampleTo16k(samples, inputRate) {
+                if (inputRate === 16000) {
+                    return toPcm16(samples);
+                }
+
+                const ratio = inputRate / 16000;
+                const outputLength = Math.floor(samples.length / ratio);
+                const output = new Int16Array(outputLength);
+
+                for (let i = 0; i < outputLength; i++) {
+                    const start = Math.floor(i * ratio);
+                    const end = Math.min(
+                        samples.length,
+                        Math.floor((i + 1) * ratio)
+                    );
+
+                    let sum = 0;
+                    let count = 0;
+
+                    for (let j = start; j < end; j++) {
+                        sum += samples[j];
+                        count++;
+                    }
+
+                    const value = Math.max(
+                        -1,
+                        Math.min(1, count ? sum / count : 0)
+                    );
+
+                    output[i] = value < 0
+                        ? value * 32768
+                        : value * 32767;
+                }
+
+                return output;
+            }
+
+            async function startStt(ticketInfo) {
+                const ticket = ticketInfo?.ticket;
+
+                if (!ticketInfo?.url || !ticket) {
+                    cleanupMicrophone();
+                    setStatus("The STT ticket was missing or invalid.");
+                    return;
+                }
+
+                if (ticket === lastStartedSttTicket) return;
+                lastStartedSttTicket = ticket;
+
+                try {
+                    setStatus("Requesting microphone access...");
+
+                    microphone = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+
+                    audioContext = new (
+                        window.AudioContext || window.webkitAudioContext
+                    )();
+
+                    if (audioContext.state === "suspended") {
+                        await audioContext.resume();
+                    }
+
+                    source = audioContext.createMediaStreamSource(microphone);
+                    processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                    silentGain = audioContext.createGain();
+                    silentGain.gain.value = 0;
+
+                    source.connect(processor);
+                    processor.connect(silentGain);
+                    silentGain.connect(audioContext.destination);
+
+                    const socketUrl = ticketInfo.url +
+                        (ticketInfo.url.includes("?") ? "&" : "?") +
+                        "ticket=" + encodeURIComponent(ticket);
+
+                    const socket = new WebSocket(socketUrl);
+                    sttSocket = socket;
+                    socket.binaryType = "arraybuffer";
+
+                    socket.onopen = () => {
+                        if (sttSocket !== socket) return;
+
+                        socket.send(JSON.stringify({
+                            type: "start",
+                            language: selectedSttLanguage,
+                            sample_rate: 16000,
+                            chunk_ms: 320
+                        }));
+
+                        setStatus(
+                            "Connected. Initializing speech recognition..."
+                        );
+                    };
+
+                    socket.onmessage = event => {
+                        if (
+                            sttSocket !== socket ||
+                            typeof event.data !== "string"
+                        ) return;
+
+                        let message;
+
+                        try {
+                            message = JSON.parse(event.data);
+                        } catch (_) {
+                            return;
+                        }
+
+                        if (message.type === "ready") {
+                            listening = true;
+                            waitingForTicket = false;
+
+                            setStatus(
+                                "Listening... speak naturally. Your question submits after silence."
+                            );
+
+                            interruptButton.disabled = false;
+                        } else if (
+                            message.type === "partial" ||
+                            message.type === "final"
+                        ) {
+                            const text = (
+                                message.text || message.delta || ""
+                            ).trim();
+
+                            if (text) {
+                                if (message.type === "final") {
+                                    finalTranscript = text;
+                                    latestTranscript = text;
+                                } else {
+                                    partialTranscript = text;
+                                    latestTranscript = text;
+                                }
+
+                                setStatus(
+                                    (message.type === "final"
+                                        ? "Recognized: "
+                                        : "Recognizing: ") + text,
+                                    true
+                                );
+                            }
+
+                            if (message.type === "final") {
+                                if (finalFallbackTimer) {
+                                    clearTimeout(finalFallbackTimer);
+                                }
+
+                                finalFallbackTimer = null;
+                                submitRecognizedQuestion();
+                            }
+                        } else if (message.type === "error") {
+                            if (finalFallbackTimer) {
+                                clearTimeout(finalFallbackTimer);
+                            }
+
+                            finalFallbackTimer = null;
+                            closeSttSocket(false);
+                            cleanupMicrophone();
+
+                            setStatus(
+                                "STT error: " +
+                                (
+                                    message.error?.message ||
+                                    message.message ||
+                                    "Unknown error"
+                                )
+                            );
+                        }
+                    };
+
+                    processor.onaudioprocess = event => {
+                        if (
+                            !listening ||
+                            waitingForFinal ||
+                            turnSubmitted ||
+                            sttSocket !== socket ||
+                            socket.readyState !== WebSocket.OPEN ||
+                            !audioContext
+                        ) return;
+
+                        const samples = event.inputBuffer.getChannelData(0);
+                        let energy = 0;
+
+                        for (let i = 0; i < samples.length; i++) {
+                            energy += samples[i] * samples[i];
+                        }
+
+                        const rms = Math.sqrt(
+                            energy / Math.max(1, samples.length)
+                        );
+
+                        const now = Date.now();
+
+                        if (rms >= SPEECH_RMS_THRESHOLD) {
+                            speechDetected = true;
+                            lastSpeechAt = now;
+                        } else if (
+                            speechDetected &&
+                            now - lastSpeechAt >= SILENCE_END_MS
+                        ) {
+                            requestSttStop("silence");
+                            return;
+                        }
+
+                        const pcm = resampleTo16k(
+                            samples,
+                            audioContext.sampleRate
+                        );
+
+                        if (
+                            pcm.length &&
+                            socket.readyState === WebSocket.OPEN
+                        ) {
+                            socket.send(pcm.buffer);
+                        }
+                    };
+
+                    socket.onerror = () => {
+                        if (sttSocket === socket) {
+                            setStatus(
+                                "STT WebSocket failed. Please try again."
+                            );
+                        }
+                    };
+
+                    socket.onclose = event => {
+                        if (sttSocket !== socket) return;
+
+                        sttSocket = null;
+
+                        if (
+                            !turnSubmitted &&
+                            (listening || waitingForFinal)
+                        ) {
+                            if (waitingForFinal) {
+                                submitRecognizedQuestion();
+                            } else {
+                                cleanupMicrophone();
+
+                                setStatus(
+                                    `STT connection closed (code ${event.code}). Please try again.`
+                                );
+                            }
+                        }
+                    };
+                } catch (error) {
+                    closeSttSocket(false);
+                    cleanupMicrophone();
+                    setStatus("Microphone error: " + error.message);
+                }
+            }
+
+            function finishAudioUI(message) {
+                setStatus(message);
+                startButton.disabled = false;
+                stopButton.disabled = true;
+                interruptButton.disabled = true;
+            }
+
+            function startBlobFallback(socket) {
+                if (!audioChunks.length) {
+                    stopAudioPlayback();
+                    finishAudioUI(
+                        "No audio was received. The text answer is still available."
+                    );
+                    return;
+                }
+
+                const blob = new Blob(audioChunks, {
+                    type: "audio/mpeg"
+                });
+
+                audioUrl = URL.createObjectURL(blob);
+                audioElement = new Audio(audioUrl);
+
+                socket.onmessage = null;
+                socket.onopen = null;
+                socket.onerror = null;
+                socket.onclose = null;
+
+                try {
+                    socket.close();
+                } catch (_) { }
+
+                if (ttsSocket === socket) {
+                    ttsSocket = null;
+                }
+
+                audioElement.onended = () => {
+                    stopAudioPlayback();
+                    finishAudioUI("Spoken answer finished.");
+                };
+
+                audioElement.onerror = () => {
+                    stopAudioPlayback();
+                    finishAudioUI("The generated audio could not be played.");
+                };
+
+                audioElement.play().catch(error => {
+                    stopAudioPlayback();
+                    finishAudioUI(
+                        "Audio playback failed: " + error.message
+                    );
+                });
+            }
+
+            function pumpMediaQueue() {
+                if (
+                    !mediaSourceMode ||
+                    !sourceBuffer ||
+                    sourceBuffer.updating
+                ) return;
+
+                if (mediaQueue.length) {
+                    try {
+                        sourceBuffer.appendBuffer(mediaQueue.shift());
+                    } catch (_) {
+                        mediaPlaybackFailed = true;
+                        mediaSourceMode = false;
+                    }
+
+                    return;
+                }
+
+                if (
+                    mediaDone &&
+                    mediaSource &&
+                    mediaSource.readyState === "open"
+                ) {
+                    try {
+                        mediaSource.endOfStream();
+                    } catch (_) { }
+                }
+            }
+
+            function setupStreamingPlayback(socket) {
+                if (
+                    !("MediaSource" in window) ||
+                    !MediaSource.isTypeSupported("audio/mpeg")
+                ) {
+                    mediaSourceMode = false;
+                    return false;
+                }
+
+                try {
+                    mediaSource = new MediaSource();
+                    mediaSourceMode = true;
+                    mediaSourceUrl = URL.createObjectURL(mediaSource);
+
+                    audioElement = new Audio();
+                    audioElement.src = mediaSourceUrl;
+                    audioElement.preload = "auto";
+
+                    mediaSource.addEventListener("sourceopen", () => {
+                        if (
+                            ttsSocket !== socket ||
+                            !mediaSourceMode
+                        ) return;
+
+                        try {
+                            sourceBuffer = mediaSource.addSourceBuffer(
+                                "audio/mpeg"
+                            );
+
+                            sourceBuffer.mode = "sequence";
+
+                            sourceBuffer.addEventListener(
+                                "updateend",
+                                pumpMediaQueue
+                            );
+
+                            pumpMediaQueue();
+                        } catch (_) {
+                            mediaPlaybackFailed = true;
+                            mediaSourceMode = false;
+                        }
+                    });
+
+                    audioElement.onended = () => {
+                        stopAudioPlayback();
+                        finishAudioUI("Spoken answer finished.");
+                    };
+
+                    audioElement.onerror = () => {
+                        if (mediaSourceMode) {
+                            mediaPlaybackFailed = true;
+                            setStatus(
+                                "Streaming playback failed. Waiting for complete audio..."
+                            );
+                        }
+                    };
+
+                    return true;
+                } catch (_) {
+                    mediaSourceMode = false;
+                    return false;
+                }
+            }
+
+            function playTts(ticketInfo, answer) {
+                const ticket = ticketInfo?.ticket;
+
+                if (!ticketInfo?.url || !ticket || !answer) {
+                    finishAudioUI(
+                        "The TTS ticket or answer is missing."
+                    );
+                    return;
+                }
+
+                if (ticket === lastTtsTicket) return;
+                lastTtsTicket = ticket;
+
+                stopAudioPlayback();
+
+                audioChunks = [];
+                mediaQueue = [];
+                mediaDone = false;
+                mediaPlaybackStarted = false;
+                mediaPlaybackFailed = false;
+
+                const socketUrl = ticketInfo.url +
+                    (ticketInfo.url.includes("?") ? "&" : "?") +
+                    "ticket=" + encodeURIComponent(ticket);
+
+                const socket = new WebSocket(socketUrl);
+                socket.binaryType = "arraybuffer";
+                ttsSocket = socket;
+
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                interruptButton.disabled = false;
+
+                setStatus("Connecting to text-to-speech...");
+
+                socket.onopen = () => {
+                    if (ttsSocket !== socket) return;
+
+                    socket.send(JSON.stringify({
+                        model: selectedTtsModel,
+                        input: answer,
+                        voice: selectedTtsVoice,
+                        speed: 1.0
+                    }));
+                };
+
+                socket.onmessage = event => {
+                    if (ttsSocket !== socket) return;
+
+                    if (typeof event.data !== "string") {
+                        const chunk = event.data instanceof ArrayBuffer
+                            ? new Uint8Array(event.data)
+                            : event.data;
+
+                        audioChunks.push(chunk);
+
+                        if (mediaSourceMode) {
+                            mediaQueue.push(chunk);
+                            pumpMediaQueue();
+
+                            if (
+                                !mediaPlaybackStarted &&
+                                audioElement &&
+                                audioChunks.length >= 2
+                            ) {
+                                mediaPlaybackStarted = true;
+
+                                audioElement.play().catch(() => {
+                                    mediaPlaybackFailed = true;
+
+                                    setStatus(
+                                        "Streaming playback unavailable; waiting for complete audio..."
+                                    );
+                                });
+                            }
+                        }
+
+                        return;
+                    }
+
+                    let message;
+
+                    try {
+                        message = JSON.parse(event.data);
+                    } catch (_) {
+                        return;
+                    }
+
+                    if (message.type === "start") {
+                        setStatus("Receiving speech audio...");
+                        setupStreamingPlayback(socket);
+                    } else if (message.type === "done") {
+                        mediaDone = true;
+
+                        if (mediaSourceMode && !mediaPlaybackFailed) {
+                            pumpMediaQueue();
+                            setStatus("Finishing spoken answer...");
+                        } else {
+                            startBlobFallback(socket);
+                        }
+                    } else if (message.type === "error") {
+                        const errorMessage =
+                            message.error?.message ||
+                            message.message ||
+                            "Unknown error";
+
+                        stopAudioPlayback();
+
+                        finishAudioUI("TTS error: " + errorMessage);
+                    }
+                };
+
+                socket.onerror = () => {
+                    if (ttsSocket !== socket) return;
+
+                    if (!audioChunks.length) {
+                        stopAudioPlayback();
+
+                        finishAudioUI(
+                            "TTS WebSocket failed. The text answer is still available."
+                        );
+                    }
+                };
+
+                socket.onclose = () => {
+                    // Audio playback is managed by MediaSource or the Blob fallback.
+                };
+            }
+
+            window.addEventListener("message", event => {
+                const data = event.data;
+
+                if (!data || data.type !== "streamlit:render") {
+                    return;
+                }
+
+                const args = data.args || {};
+
+                if (
+                    typeof args.stt_language === "string" &&
+                    args.stt_language
+                ) {
+                    selectedSttLanguage = args.stt_language;
+                }
+
+                if (
+                    typeof args.tts_voice === "string" &&
+                    args.tts_voice
+                ) {
+                    selectedTtsVoice = args.tts_voice;
+                }
+
+                if (
+                    typeof args.tts_model === "string" &&
+                    args.tts_model
+                ) {
+                    selectedTtsModel = args.tts_model;
+                }
+
+                if (args.stt_ticket && waitingForTicket) {
+                    startStt(args.stt_ticket);
+                }
+
+                if (args.voice_answer && args.tts_ticket) {
+                    const ticket = args.tts_ticket.ticket;
+
+                    if (ticket && ticket !== lastTtsTicket) {
+                        playTts(args.tts_ticket, args.voice_answer);
+                    }
+                }
+
+                if (args.voice_active === false && listening) {
+                    closeSttSocket(false);
+                    cleanupMicrophone();
+                }
+            });
+
+            notifyStreamlit("streamlit:componentReady", {
+                apiVersion: 1
+            });
+
+            notifyStreamlit("streamlit:setFrameHeight", {
+                height: 125
+            });
+        })();
+    </script>
+</body>
+
+</html>

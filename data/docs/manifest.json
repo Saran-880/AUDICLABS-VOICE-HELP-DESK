@@ -1,0 +1,127 @@
+[
+  {
+    "filename": "docs_quickstart.md",
+    "title": "Quickstart · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/quickstart"
+  },
+  {
+    "filename": "docs_api_sample.md",
+    "title": "Sample clip · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/sample"
+  },
+  {
+    "filename": "docs_api_models.md",
+    "title": "List models · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/models"
+  },
+  {
+    "filename": "docs_models.md",
+    "title": "Models · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/models"
+  },
+  {
+    "filename": "docs_text-to-speech.md",
+    "title": "Text to Speech · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/text-to-speech"
+  },
+  {
+    "filename": "docs_api_tts-voices.md",
+    "title": "Voices, languages & health · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/tts-voices"
+  },
+  {
+    "filename": "docs_api_tts-stream.md",
+    "title": "Generate speech (streaming) · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/tts-stream"
+  },
+  {
+    "filename": "docs_api_tts-speech.md",
+    "title": "Generate speech · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/tts-speech"
+  },
+  {
+    "filename": "docs_errors.md",
+    "title": "Errors · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/errors"
+  },
+  {
+    "filename": "docs_api_stream.md",
+    "title": "Remove noise (streaming) · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/stream"
+  },
+  {
+    "filename": "docs_api_denoise.md",
+    "title": "Remove noise · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/denoise"
+  },
+  {
+    "filename": "docs_noise-suppressor.md",
+    "title": "Noise Suppressor · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/noise-suppressor"
+  },
+  {
+    "filename": "docs_api_denoise-batch.md",
+    "title": "Remove noise (bulk) · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/denoise-batch"
+  },
+  {
+    "filename": "docs_api_health.md",
+    "title": "Health · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/health"
+  },
+  {
+    "filename": "docs_apis.md",
+    "title": "APIs · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/apis"
+  },
+  {
+    "filename": "docs_authentication.md",
+    "title": "Authentication · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/authentication"
+  },
+  {
+    "filename": "docs_api_diarization-models.md",
+    "title": "Diarization models & health · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/diarization-models"
+  },
+  {
+    "filename": "docs_api_diarize.md",
+    "title": "Diarize audio · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/diarize"
+  },
+  {
+    "filename": "docs_speaker-diarization.md",
+    "title": "Speaker Diarization · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/speaker-diarization"
+  },
+  {
+    "filename": "docs_speech-to-text.md",
+    "title": "Speech to Text · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/speech-to-text"
+  },
+  {
+    "filename": "docs_api_stt-models.md",
+    "title": "Models, languages & health · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/stt-models"
+  },
+  {
+    "filename": "docs_api_stt-stream.md",
+    "title": "Transcribe live (streaming) · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/stt-stream"
+  },
+  {
+    "filename": "docs_api_stt-transcriptions.md",
+    "title": "Transcribe audio · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/api/stt-transcriptions"
+  },
+  {
+    "filename": "docs_rate-limits.md",
+    "title": "Rate limits & quotas · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/rate-limits"
+  },
+  {
+    "filename": "docs_architecture.md",
+    "title": "Architecture · AudicLabs",
+    "url": "https://docs.audiclabs.com/docs/architecture"
+  }
+]
